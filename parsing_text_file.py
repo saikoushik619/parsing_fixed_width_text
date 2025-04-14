@@ -1,10 +1,10 @@
 import pandas as pd
 
-
+import time
 from sqlalchemy import create_engine,text
 
 
-file_path = "FT60_ECL891008_20241223.txt"
+file_path = "Report_ECL891008_123124.txt"
 
 def extract_summary_accrued(record):
     m=record.split('\n')
@@ -126,7 +126,7 @@ flat_list=[]
 for rows in split_files:
     flat_list.append(rows.split('\n\n\n'))
 
-incomplete_trade=''
+incomplete_trade=[]
 merged_trade=''
 
 # to extract details of body
@@ -150,22 +150,18 @@ def extract_values(record):
         each_rec = row_val.split("\n\n")
 
 
-        for i,rec in enumerate(each_rec):
-            each_rec_len = len(each_rec)
 
+        for i,rec in enumerate(each_rec):
 
             if 'SECURITY' in each_rec[-1].split():
 
 
                 if incomplete_trade:
-                    each_rec.insert(0,incomplete_trade)
-                    incomplete_trade=''
+                    each_rec = incomplete_trade+each_rec
 
-
+                    incomplete_trade=[]
 
                 for i in range(0,len(each_rec)-1):
-
-
 
                     trade_values={
                         "security_description": extract_security(each_rec[i]) if each_rec[i].split()[0].isalpha() else extract_security(each_rec[i-i])
@@ -222,13 +218,13 @@ def extract_values(record):
                 break
 
             else:
+                incomplete_trade.append(each_rec[i])
 
-                incomplete_trade=each_rec[0]
 
     return trade_set_values,summary_values
 
 
-def save_to_db(trade_set_values,summary_values):
+def save_to_db(trade_set_values,summary_values, test_purpose = False, test_engine = None):
     trade_df=pd.DataFrame(trade_set_values)
 
     trade_df['For']=date
@@ -251,7 +247,14 @@ def save_to_db(trade_set_values,summary_values):
     port = 3306
     db_name = "stock_details"
 
-    engine = create_engine(f"{dialect_and_driver}//{username}:{password}@{hostname}:{port}/{db_name}")
+    url = f"{dialect_and_driver}//{username}:{password}@{hostname}:{port}/{db_name}"
+    engine = create_engine(url)
+
+    if test_purpose:
+        #url = "sqlite:///file::memory:?cache=shared"
+        engine = test_engine
+
+
 
     with engine.connect() as connection:
         # creating trade_details table
@@ -304,7 +307,8 @@ def save_to_db(trade_set_values,summary_values):
         connection.commit()
 
 
-def process_all_records(flat_list):
+
+def process_all_records(flat_list, testing = False, **kwargs):
     trade_set_values = []
     summary_values = []
 
@@ -314,19 +318,19 @@ def process_all_records(flat_list):
         trade_set_values.extend(trade_data)
         summary_values.extend(summary_data)
 
+    test_engine = kwargs.get("engine")
 
-    save_to_db(trade_set_values, summary_values)
-
-
-
-process_all_records(flat_list)
+    save_to_db(trade_set_values, summary_values, test_purpose = testing, test_engine = test_engine)
+    return 'summary and trade created'
 
 
+start=time.time()
+if __name__ == "__main__":
+    process_all_records(flat_list)
 
 
-
-
-
+end=time.time()
+print('Time taken to parse the file:',end-start)
 
 
 
